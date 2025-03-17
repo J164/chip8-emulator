@@ -10,7 +10,7 @@ pub struct Chip8 {
     program_counter: usize,
     stack_pointer: usize,
     memory: [u8; MEMORY_SIZE],
-    stack: [u16; MAX_STACK_SIZE],
+    stack: [usize; MAX_STACK_SIZE],
     sound_timer: u8,
     delay_timer: u8,
     keypad: [bool; KEYPAD_SIZE],
@@ -94,7 +94,6 @@ impl Chip8 {
         self.program_counter = match opcode.nibbles() {
             (0x00, 0x00, 0x0E, 0x00) => self.op_00e0(),
             (0x00, 0x00, 0x0E, 0x0E) => self.op_00ee(),
-            (0x00, _, _, _) => self.op_0nnn(opcode.nnn()),
             (0x01, _, _, _) => self.op_1nnn(opcode.nnn()),
             (0x02, _, _, _) => self.op_2nnn(opcode.nnn()),
             (0x03, _, _, _) => self.op_3xnn(opcode.x(), opcode.nn()),
@@ -123,12 +122,6 @@ impl Chip8 {
             | (self.memory[self.program_counter + 1] as u16)
     }
 
-    /// Opcode: 0NNN
-    /// Calls the subroutine at address `nnn`
-    fn op_0nnn(&mut self, nnn: usize) -> usize {
-        todo!();
-    }
-
     /// Opcode: 00E0
     /// Clears the screen
     fn op_00e0(&mut self) -> usize {
@@ -138,37 +131,52 @@ impl Chip8 {
     /// Opcode: 00EE
     /// Returns from the current subroutine
     fn op_00ee(&mut self) -> usize {
-        todo!();
+        self.stack_pointer -= 1;
+        self.stack[self.stack_pointer] + INSTRUCTION_SIZE
     }
 
     /// Opcode: 1NNN
     /// Sets the program counter to address `nnn`
-    fn op_1nnn(&mut self, nnn: usize) -> usize {
-        todo!();
+    fn op_1nnn(&self, nnn: usize) -> usize {
+        nnn
     }
 
     /// Opcode: 2NNN
     /// Calls the subroutine at address `nnn`
     fn op_2nnn(&mut self, nnn: usize) -> usize {
-        todo!();
+        self.stack[self.stack_pointer] = self.program_counter;
+        self.stack_pointer += 1;
+        nnn
     }
 
     /// Opcode: 3XNN
     /// Skips the following instruction if `registers[x] = nn`
     fn op_3xnn(&mut self, x: usize, nn: u8) -> usize {
-        todo!();
+        if self.registers[x] == nn {
+            self.program_counter + INSTRUCTION_SIZE * 2
+        } else {
+            self.program_counter + INSTRUCTION_SIZE
+        }
     }
 
     /// Opcode: 4XNN
     /// Skips the following instruction if `registers[x] != nn`
     fn op_4xnn(&mut self, x: usize, nn: u8) -> usize {
-        todo!();
+        if self.registers[x] != nn {
+            self.program_counter + INSTRUCTION_SIZE * 2
+        } else {
+            self.program_counter + INSTRUCTION_SIZE
+        }
     }
 
     /// Opcode: 5XY0
     /// Skips the following instruction if `registers[x] = registers[y]`
     fn op_5xy0(&mut self, x: usize, y: usize) -> usize {
-        todo!();
+        if self.registers[x] == self.registers[y] {
+            self.program_counter + INSTRUCTION_SIZE * 2
+        } else {
+            self.program_counter + INSTRUCTION_SIZE
+        }
     }
 
     /// Opcode: 6XNN
