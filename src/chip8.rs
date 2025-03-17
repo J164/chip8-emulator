@@ -265,7 +265,246 @@ impl Chip8 {
     /// Sets `registers[0xF]` to the most significant bit of `registers[y]`
     fn op_8xye(&mut self, x: usize, y: usize) -> usize {
         self.registers[x] = self.registers[y] << 1;
-        self.registers[0xF] = self.registers[y] >> 15;
+        self.registers[0xF] = self.registers[y] >> 7;
         self.program_counter + INSTRUCTION_SIZE
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_op_00ee() {
+        let mut chip8 = Chip8::new();
+        chip8.stack_pointer = 0x01;
+        chip8.stack[0] = 0x300;
+        
+        let result = chip8.op_00ee();
+        assert_eq!(result, 0x300 + INSTRUCTION_SIZE);
+        assert_eq!(chip8.stack_pointer, 0);
+    }
+
+    #[test]
+    fn test_op_1nnn() {
+        let chip8 = Chip8::new();
+        assert_eq!(chip8.op_1nnn(0x400), 0x400);
+    }
+
+    #[test]
+    fn test_op_2nnn() {
+        let mut chip8 = Chip8::new();
+        chip8.program_counter = 0x200;
+        chip8.stack_pointer = 0x00;
+
+        let result = chip8.op_2nnn(0x600);
+        assert_eq!(result, 0x600);
+        assert_eq!(chip8.stack[0], 0x200);
+        assert_eq!(chip8.stack_pointer, 1);
+    }
+
+    #[test]
+    fn test_op_3xnn() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x42;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_3xnn(0x1, 0x42);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE * 2);
+
+        let result = chip8.op_3xnn(0x1, 0x43);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_4xnn() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x42;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_4xnn(0x1, 0x43);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE * 2);
+
+        let result = chip8.op_4xnn(0x1, 0x42);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_5xy0() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x50;
+        chip8.registers[0x2] = 0x50;
+        chip8.registers[0x3] = 0x51;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_5xy0(0x1, 0x2);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE * 2);
+
+        let result = chip8.op_5xy0(0x1, 0x3);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_6xnn() {
+        let mut chip8 = Chip8::new();
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_6xnn(0x1, 0x99);
+        assert_eq!(chip8.registers[0x1], 0x99);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_7xnn() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x05;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_7xnn(0x1, 0x10);
+        assert_eq!(chip8.registers[0x1], 0x15);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_8xy0() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x05;
+        chip8.registers[0x2] = 0x10;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_8xy0(0x1, 0x2);
+        assert_eq!(chip8.registers[0x1], 0x10);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_8xy1() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x07;
+        chip8.registers[0x2] = 0x0A;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_8xy1(0x1, 0x2);
+        assert_eq!(chip8.registers[0x1], 0x0F);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_8xy2() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x07;
+        chip8.registers[0x2] = 0x0A;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_8xy2(0x1, 0x2);
+        assert_eq!(chip8.registers[0x1], 0x02);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_8xy3() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x07;
+        chip8.registers[0x2] = 0x0A;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_8xy3(0x1, 0x2);
+        assert_eq!(chip8.registers[0x1], 0x0D);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_8xy4() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x07;
+        chip8.registers[0x2] = 0xFF;
+        chip8.registers[0x3] = 0x0A;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_8xy4(0x1, 0x2);
+        assert_eq!(chip8.registers[0x1], 0x06);
+        assert_eq!(chip8.registers[0xF], 0x01);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+
+        let result = chip8.op_8xy4(0x1, 0x3);
+        assert_eq!(chip8.registers[0x1], 0x10);
+        assert_eq!(chip8.registers[0xF], 0x00);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_8xy5() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x07;
+        chip8.registers[0x2] = 0xFF;
+        chip8.registers[0x3] = 0x03;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_8xy5(0x1, 0x2);
+        assert_eq!(chip8.registers[0x1], 0x08);
+        assert_eq!(chip8.registers[0xF], 0x01);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+
+        let result = chip8.op_8xy5(0x1, 0x3);
+        assert_eq!(chip8.registers[0x1], 0x05);
+        assert_eq!(chip8.registers[0xF], 0x00);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_8xy6() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x07;
+        chip8.registers[0x2] = 0xFF;
+        chip8.registers[0x3] = 0x06;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_8xy6(0x1, 0x2);
+        assert_eq!(chip8.registers[0x1], 0x7F);
+        assert_eq!(chip8.registers[0xF], 0x01);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+
+        let result = chip8.op_8xy6(0x1, 0x3);
+        assert_eq!(chip8.registers[0x1], 0x03);
+        assert_eq!(chip8.registers[0xF], 0x00);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_8xy7() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x0F;
+        chip8.registers[0x2] = 0x07;
+        chip8.registers[0x3] = 0x08;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_8xy7(0x1, 0x2);
+        assert_eq!(chip8.registers[0x1], 0xF8);
+        assert_eq!(chip8.registers[0xF], 0x01);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+
+        let result = chip8.op_8xy7(0x2, 0x3);
+        assert_eq!(chip8.registers[0x2], 0x01);
+        assert_eq!(chip8.registers[0xF], 0x00);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_8xye() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x07;
+        chip8.registers[0x2] = 0xFF;
+        chip8.registers[0x3] = 0x06;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_8xye(0x1, 0x2);
+        assert_eq!(chip8.registers[0x1], 0xFE);
+        assert_eq!(chip8.registers[0xF], 0x01);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+
+        let result = chip8.op_8xye(0x1, 0x3);
+        assert_eq!(chip8.registers[0x1], 0x0C);
+        assert_eq!(chip8.registers[0xF], 0x00);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
     }
 }
