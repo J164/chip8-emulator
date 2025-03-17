@@ -1,8 +1,12 @@
+use rand::random;
+
 const REGISTER_COUNT: usize = 16;
 const MEMORY_SIZE: usize = 4096;
 const MAX_STACK_SIZE: usize = 12;
 const KEYPAD_SIZE: usize = 16;
 const INSTRUCTION_SIZE: usize = 2;
+const SCREEN_WIDTH: usize = 64;
+const SCREEN_HEIGHT: usize = 32;
 
 pub struct Chip8 {
     registers: [u8; REGISTER_COUNT],
@@ -14,6 +18,7 @@ pub struct Chip8 {
     sound_timer: u8,
     delay_timer: u8,
     keypad: [bool; KEYPAD_SIZE],
+    screen: [[bool; SCREEN_WIDTH]; SCREEN_HEIGHT]
 }
 
 type Opcode = u16;
@@ -79,12 +84,17 @@ impl Chip8 {
             sound_timer: 0,
             delay_timer: 0,
             keypad: [false; KEYPAD_SIZE],
+            screen: [[false; SCREEN_WIDTH]; SCREEN_HEIGHT]
         }
     }
 
     /// Loads bytes of data into memory starting from address 0x200
     pub fn load(&mut self, data: &[u8]) {
-        todo!();
+        let start_address = 0x200;
+        let max_length = MEMORY_SIZE - start_address;
+        for (i, &byte) in data.iter().take(max_length).enumerate() {
+            self.memory[start_address + i] = byte;
+        }
     }
 
     /// Emulates one tick of the processor
@@ -110,6 +120,10 @@ impl Chip8 {
             (0x08, _, _, 0x06) => self.op_8xy6(opcode.x(), opcode.y()),
             (0x08, _, _, 0x07) => self.op_8xy7(opcode.x(), opcode.y()),
             (0x08, _, _, 0x0E) => self.op_8xye(opcode.x(), opcode.y()),
+            (0x09, _, _, 0x00) => self.op_9xy0(opcode.x(), opcode.y()),
+            (0x0A, _, _, _) => self.op_annn(opcode.nnn()),
+            (0x0B, _, _, _) => self.op_bnnn(opcode.nnn()),
+            (0x0C, _, _, _) => self.op_cxnn(opcode.x(),opcode.nn()),
             _ => unimplemented!(),
         };
 
@@ -125,7 +139,8 @@ impl Chip8 {
     /// Opcode: 00E0
     /// Clears the screen
     fn op_00e0(&mut self) -> usize {
-        todo!();
+        self.screen = [[false; SCREEN_WIDTH]; SCREEN_HEIGHT];
+        self.program_counter + INSTRUCTION_SIZE
     }
 
     /// Opcode: 00EE
@@ -268,11 +283,54 @@ impl Chip8 {
         self.registers[0xF] = self.registers[y] >> 7;
         self.program_counter + INSTRUCTION_SIZE
     }
+
+    /// Opcode: 9XY0
+    /// Skips the following instruction if `registers[x] != registers[y]`
+    fn op_9xy0(&mut self, x: usize, y: usize) -> usize {
+        if self.registers[x] != self.registers[y] {
+            self.program_counter + INSTRUCTION_SIZE * 2
+        } else {
+            self.program_counter + INSTRUCTION_SIZE
+        }
+    }
+
+    /// Opcode: ANNN
+    /// Store memory address `nnn` in `index_register`
+    fn op_annn(&mut self, nnn: usize) -> usize {
+        self.index_register = nnn;
+        self.program_counter + INSTRUCTION_SIZE
+    }
+
+    /// Opcode: BNNN
+    /// Sets the program counter to `nnn + registers[0x0]`
+    fn op_bnnn(&self, nnn: usize) -> usize {
+        nnn + (self.registers[0x0] as usize)
+    }
+
+    /// Opcode: CXNN
+    /// Sets `registers[x]` to a random number with a mask of `nn`
+    fn op_cxnn(&mut self, x: usize, nn: u8) -> usize {
+        self.registers[x] = random::<u8>() & nn;
+        self.program_counter + INSTRUCTION_SIZE
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_load() {
+        let mut chip8 = Chip8::new();
+        let buffer = [1, 2, 3, 4, 5];
+
+        chip8.load(&buffer);
+        assert_eq!(chip8.memory[0x200], 1);
+        assert_eq!(chip8.memory[0x201], 2);
+        assert_eq!(chip8.memory[0x202], 3);
+        assert_eq!(chip8.memory[0x203], 4);
+        assert_eq!(chip8.memory[0x204], 5);
+    }
 
     #[test]
     fn test_op_00ee() {
@@ -505,6 +563,51 @@ mod tests {
         let result = chip8.op_8xye(0x1, 0x3);
         assert_eq!(chip8.registers[0x1], 0x0C);
         assert_eq!(chip8.registers[0xF], 0x00);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_9xy0() {
+        let mut chip8 = Chip8::new();
+        chip8.registers[0x1] = 0x50;
+        chip8.registers[0x2] = 0x50;
+        chip8.registers[0x3] = 0x51;
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_9xy0(0x1, 0x2);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+
+        let result = chip8.op_9xy0(0x1, 0x3);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE * 2);
+    }
+
+    #[test]
+    fn test_op_annn() {
+        let mut chip8 = Chip8::new();
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_annn( 0x99A);
+        assert_eq!(chip8.index_register, 0x99A);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_bnnn() {
+        let mut chip8 = Chip8::new();
+        chip8.program_counter = 0x200;
+        chip8.registers[0x0] = 0x04;
+
+        let result = chip8.op_bnnn( 0x203);
+        assert_eq!(result, 0x207);
+    }
+
+    #[test]
+    fn test_op_cxnn() {
+        let mut chip8 = Chip8::new();
+        chip8.program_counter = 0x200;
+
+        let result = chip8.op_cxnn( 0x0, 0xF0);
+        assert_eq!(chip8.registers[0x0] & !0xF0, 0);
         assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
     }
 }
