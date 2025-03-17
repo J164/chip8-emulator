@@ -5,7 +5,7 @@ const MEMORY_SIZE: usize = 4096;
 const MAX_STACK_SIZE: usize = 12;
 const KEYPAD_SIZE: usize = 16;
 const INSTRUCTION_SIZE: usize = 2;
-const SCREEN_WIDTH: usize = 64;
+/// The logical height of the screen in pixels
 const SCREEN_HEIGHT: usize = 32;
 
 pub struct Chip8 {
@@ -18,7 +18,8 @@ pub struct Chip8 {
     sound_timer: u8,
     delay_timer: u8,
     keypad: [bool; KEYPAD_SIZE],
-    screen: [[bool; SCREEN_WIDTH]; SCREEN_HEIGHT]
+    screen: [u64; SCREEN_HEIGHT],
+    draw_flag: bool
 }
 
 type Opcode = u16;
@@ -84,7 +85,8 @@ impl Chip8 {
             sound_timer: 0,
             delay_timer: 0,
             keypad: [false; KEYPAD_SIZE],
-            screen: [[false; SCREEN_WIDTH]; SCREEN_HEIGHT]
+            screen: [0; SCREEN_HEIGHT],
+            draw_flag: false
         }
     }
 
@@ -124,6 +126,7 @@ impl Chip8 {
             (0x0A, _, _, _) => self.op_annn(opcode.nnn()),
             (0x0B, _, _, _) => self.op_bnnn(opcode.nnn()),
             (0x0C, _, _, _) => self.op_cxnn(opcode.x(),opcode.nn()),
+            (0x0D, _, _, _) => self.op_dxyn(opcode.x(), opcode.y(), opcode.n()),
             _ => unimplemented!(),
         };
 
@@ -139,7 +142,8 @@ impl Chip8 {
     /// Opcode: 00E0
     /// Clears the screen
     fn op_00e0(&mut self) -> usize {
-        self.screen = [[false; SCREEN_WIDTH]; SCREEN_HEIGHT];
+        self.screen = [0; SCREEN_HEIGHT];
+        self.draw_flag = true;
         self.program_counter + INSTRUCTION_SIZE
     }
 
@@ -313,6 +317,29 @@ impl Chip8 {
         self.registers[x] = random::<u8>() & nn;
         self.program_counter + INSTRUCTION_SIZE
     }
+
+    /// Opcode: DXYN
+    /// Draws a sprite from memory starting at the address `index_register` at position `registers[x]`, `registers[y]`
+    /// The sprite has a width of 8 pixels and a height of `n` pixels
+    /// Sets `registers[0xF]` to `0x01` if any previously set pixels are unset and `0x00` otherwise
+    fn op_dxyn(&mut self, x: usize, y: usize, n: u8) -> usize {
+        self.registers[0xF] = 0x00;
+        
+        let left = self.registers[x] as usize;
+        let top = self.registers[y] as usize;
+
+        for row_idx in 0..(n as usize) {
+            let row = (self.memory[self.index_register + row_idx] as u64) << ((64 - 8) - left);
+            let collision_mask = self.screen[top + row_idx] | row;
+            self.screen[top + row_idx] ^= row;
+
+            if self.screen[top + row_idx] != collision_mask {
+                self.registers[0xF] = 0x01;
+            }
+        }
+
+        self.program_counter + INSTRUCTION_SIZE
+    }
 }
 
 #[cfg(test)]
@@ -330,6 +357,18 @@ mod tests {
         assert_eq!(chip8.memory[0x202], 3);
         assert_eq!(chip8.memory[0x203], 4);
         assert_eq!(chip8.memory[0x204], 5);
+    }
+
+    #[test]
+    fn test_op_00e0() {
+        let mut chip8 = Chip8::new();
+        chip8.screen = [0xFFFFFFFFFFFFFFFF; SCREEN_HEIGHT];
+        chip8.program_counter = 0x200;
+        
+        let result = chip8.op_00e0();
+        assert_eq!(chip8.screen, [0; SCREEN_HEIGHT]);
+        assert!(chip8.draw_flag);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
     }
 
     #[test]
@@ -608,6 +647,96 @@ mod tests {
 
         let result = chip8.op_cxnn( 0x0, 0xF0);
         assert_eq!(chip8.registers[0x0] & !0xF0, 0);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+    }
+
+    #[test]
+    fn test_op_dxyn() {
+        let mut chip8 = Chip8::new();
+        chip8.program_counter = 0x200;
+        chip8.registers[0x0] = 0x05;
+        chip8.registers[0x1] = 0x01;
+        chip8.index_register = 0x300;
+        chip8.memory[0x300] = 0b11111111;
+        chip8.memory[0x301] = 0b10000001;
+        chip8.memory[0x302] = 0b10000001;
+        chip8.memory[0x303] = 0b11111111;
+
+        let result = chip8.op_dxyn(0x0, 0x01, 0x4);
+        assert_eq!(chip8.screen, [
+            0x0000000000000000,
+            0x07F8000000000000,
+            0x0408000000000000,
+            0x0408000000000000,
+            0x07F8000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+        ]);
+        assert_eq!(chip8.registers[0xF], 0x00);
+        assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
+
+        chip8.registers[0x3] = 0x02;
+        let result = chip8.op_dxyn(0x0, 0x3, 0x1);
+        assert_eq!(chip8.screen, [
+            0x0000000000000000,
+            0x07F8000000000000,
+            0x03F0000000000000,
+            0x0408000000000000,
+            0x07F8000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+        ]);
+        assert_eq!(chip8.registers[0xF], 0x01);
         assert_eq!(result, 0x200 + INSTRUCTION_SIZE);
     }
 }
