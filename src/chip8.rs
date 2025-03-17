@@ -15,45 +15,52 @@ pub struct Chip8 {
     keypad: [bool; KEYPAD_SIZE],
 }
 
-type OpcodeDigits = (u8, u8, u8, u8);
+type Opcode = u16;
 
-trait Opcode {
-    fn new(opcode: u16) -> Self;
+/// Allows the type to be parsed as a CHIP8 opcode
+trait Chip8Opcode {
+    /// Splits the opcode into hexadecimal digits
+    fn nibbles(&self) -> (u8, u8, u8, u8);
+    /// Gets the address
     fn nnn(&self) -> usize;
+    /// Gets the 8-bit constant
     fn nn(&self) -> u8;
+    /// Gets the 4-bit constant
     fn n(&self) -> u8;
+    /// Gets the first register address
     fn x(&self) -> usize;
+    /// Gets the second register address
     fn y(&self) -> usize;
 }
 
-impl Opcode for OpcodeDigits {
-    fn new(opcode: u16) -> Self {
+impl Chip8Opcode for Opcode {
+    fn nibbles(&self) -> (u8, u8, u8, u8) {
         (
-            (opcode & 0xF000) as u8,
-            (opcode & 0x0F00) as u8,
-            (opcode & 0x00F0) as u8,
-            (opcode & 0x000F) as u8,
+            (self & 0xF000) as u8,
+            (self & 0x0F00) as u8,
+            (self & 0x00F0) as u8,
+            (self & 0x000F) as u8,
         )
     }
 
     fn nnn(&self) -> usize {
-        ((self.1 as usize) << 8) | ((self.2 as usize) << 4) | (self.3 as usize)
+        (self & 0x0FFF) as usize
     }
 
     fn nn(&self) -> u8 {
-        (self.2 << 4) | self.3
+        (self & 0x00FF) as u8
     }
 
     fn n(&self) -> u8 {
-        self.3
+        (self & 0x000F) as u8
     }
 
     fn x(&self) -> usize {
-        self.3 as usize
+        (self & 0x0F00) as usize
     }
 
     fn y(&self) -> usize {
-        self.2 as usize
+        (self & 0x00F0) as usize
     }
 }
 
@@ -95,19 +102,17 @@ impl Chip8 {
 
     /// Decodes and executes instruction corresponding to the opcode
     fn execute(&mut self, opcode: u16) {
-        let opcode_digits = OpcodeDigits::new(opcode);
-
-        match opcode_digits {
+        match opcode.nibbles() {
             (0x00, 0x00, 0x0E, 0x00) => self.op_00e0(),
             (0x00, 0x00, 0x0E, 0x0E) => self.op_00ee(),
-            (0x00, _, _, _) => self.op_0nnn(opcode_digits.nnn()),
-            (0x01, _, _, _) => self.op_1nnn(opcode_digits.nnn()),
-            (0x02, _, _, _) => self.op_2nnn(opcode_digits.nnn()),
-            (0x03, _, _, _) => self.op_3xnn(opcode_digits.x(), opcode_digits.nn()),
-            (0x04, _, _, _) => self.op_4xnn(opcode_digits.x(), opcode_digits.nn()),
-            (0x05, _, _, 0x00) => self.op_5xy0(opcode_digits.x(), opcode_digits.y()),
-            (0x06, _, _, _) => self.op_6xnn(opcode_digits.x(), opcode_digits.nn()),
-            (0x07, _, _, _) => self.op_7xnn(opcode_digits.x(), opcode_digits.nn()),
+            (0x00, _, _, _) => self.op_0nnn(opcode.nnn()),
+            (0x01, _, _, _) => self.op_1nnn(opcode.nnn()),
+            (0x02, _, _, _) => self.op_2nnn(opcode.nnn()),
+            (0x03, _, _, _) => self.op_3xnn(opcode.x(), opcode.nn()),
+            (0x04, _, _, _) => self.op_4xnn(opcode.x(), opcode.nn()),
+            (0x05, _, _, 0x00) => self.op_5xy0(opcode.x(), opcode.y()),
+            (0x06, _, _, _) => self.op_6xnn(opcode.x(), opcode.nn()),
+            (0x07, _, _, _) => self.op_7xnn(opcode.x(), opcode.nn()),
             _ => unimplemented!(),
         }
     }
